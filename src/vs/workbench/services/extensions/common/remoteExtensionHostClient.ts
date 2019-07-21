@@ -24,7 +24,7 @@ import { ILifecycleService } from 'vs/platform/lifecycle/common/lifecycle';
 import { PersistentProtocol } from 'vs/base/parts/ipc/common/ipc.net';
 import { IExtensionDescription } from 'vs/platform/extensions/common/extensions';
 import { VSBuffer } from 'vs/base/common/buffer';
-import { IExtensionHostDebugService } from 'vs/workbench/services/extensions/common/extensionHostDebug';
+import { IExtensionHostDebugService } from 'vs/platform/debug/common/extensionHostDebug';
 import { IProductService } from 'vs/platform/product/common/product';
 import { ISignService } from 'vs/platform/sign/common/sign';
 
@@ -76,19 +76,20 @@ export class RemoteExtensionHostClient extends Disposable implements IExtensionH
 			webSocketFactory: this._webSocketFactory,
 			addressProvider: {
 				getAddress: async () => {
-					const { host, port } = await this.remoteAuthorityResolverService.resolveAuthority(this._initDataProvider.remoteAuthority);
-					return { host, port };
+					const { authority } = await this.remoteAuthorityResolverService.resolveAuthority(this._initDataProvider.remoteAuthority);
+					return { host: authority.host, port: authority.port };
 				}
 			},
 			signService: this._signService
 		};
-		return this.remoteAuthorityResolverService.resolveAuthority(this._initDataProvider.remoteAuthority).then((resolvedAuthority) => {
+		return this.remoteAuthorityResolverService.resolveAuthority(this._initDataProvider.remoteAuthority).then((resolverResult) => {
 
 			const startParams: IRemoteExtensionHostStartParams = {
 				language: platform.language,
 				debugId: this._environmentService.debugExtensionHost.debugId,
 				break: this._environmentService.debugExtensionHost.break,
 				port: this._environmentService.debugExtensionHost.port,
+				env: resolverResult.options && resolverResult.options.extensionHostEnv
 			};
 
 			const extDevLocs = this._environmentService.extensionDevelopmentLocationURI;
@@ -189,12 +190,18 @@ export class RemoteExtensionHostClient extends Disposable implements IExtensionH
 					extensionDevelopmentLocationURI: this._environmentService.extensionDevelopmentLocationURI,
 					extensionTestsLocationURI: this._environmentService.extensionTestsLocationURI,
 					globalStorageHome: remoteExtensionHostData.globalStorageHome,
-					userHome: remoteExtensionHostData.userHome
+					userHome: remoteExtensionHostData.userHome,
+					webviewResourceRoot: this._environmentService.webviewResourceRoot,
+					webviewCspSource: this._environmentService.webviewCspSource,
 				},
 				workspace: this._contextService.getWorkbenchState() === WorkbenchState.EMPTY ? null : {
 					configuration: workspace.configuration,
 					id: workspace.id,
 					name: this._labelService.getWorkspaceLabel(workspace)
+				},
+				remote: {
+					isRemote: true,
+					authority: this._initDataProvider.remoteAuthority
 				},
 				resolvedExtensions: resolvedExtensions,
 				hostExtensions: hostExtensions,
@@ -203,7 +210,6 @@ export class RemoteExtensionHostClient extends Disposable implements IExtensionH
 				logLevel: this._logService.getLevel(),
 				logsLocation: remoteExtensionHostData.extensionHostLogsPath,
 				autoStart: true,
-				remoteAuthority: this._initDataProvider.remoteAuthority,
 			};
 			return r;
 		});
